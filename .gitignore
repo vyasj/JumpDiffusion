@@ -1,1 +1,6 @@
 env/
+
+# specific files
+implied_volatility.py
+merton_process.py
+poisson_process.py
