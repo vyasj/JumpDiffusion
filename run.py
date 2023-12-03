@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from math import erf
+from scipy.stats import norm
 
 def Stock_GBM_Jumps(S0: int, mu: float, sigma: float, lam: float, T: int, dt: float, M: int) -> list[list[float]]:
     """
@@ -22,15 +22,10 @@ def Stock_GBM_Jumps(S0: int, mu: float, sigma: float, lam: float, T: int, dt: fl
         J_t = S0 * np.random.poisson(lam, size=(M, ))
         paths[:,col] = paths[:,col-1] * np.exp((mu - ((sigma**2)/2)) * dt + (sigma * W_t)) + J_t
     
-    plt.figure(1)
-    plt.plot(paths.T.squeeze())
-    plt.xlabel("$t$")
-    plt.ylabel("Price")
-    plt.title(f"$M$={M} Simulations of GBM with jumps of rate $\lambda$={lam}\n($\mu$={mu}, $\sigma$={sigma})")
-    
-    return paths
+    return np.array(paths)
 
-def Option_Price_BS(type: str, ul_path: list[float], K: float, T: int, r: float, vol: float) -> list[float]:
+
+def Option_Price_BS(type: str, ul_paths: list[list[float]], K: float, T: int, r: float, vol: float) -> list[list[float]]:
     """
     Calculates the price of an option using the Black-Scholes formula
     -----------------------------------------------------------------
@@ -41,17 +36,24 @@ def Option_Price_BS(type: str, ul_path: list[float], K: float, T: int, r: float,
     r : risk free rate
     vol : volatility of underlying asset
     -----------------------------------------------------------------
-    Returns a path of option price with the same length as ul_path
+    Returns an option price path for each underlying asset path in ul_paths
     """
-    path = []
-    T = len(ul_path)
-    if type.lower() == "call":
-        for t, spot_price in enumerate(ul_path):
-            d1 = (np.log(spot_price / K) + ((r + ((vol ** 2) / 2)) * (T-t))) / (vol * np.sqrt(T-t))
-            d2 = d1 - (vol * np.sqrt(T-t))
-            N = lambda x : (1 + erf(x / np.sqrt(2))) / 2
-            path.append((spot_price * N(d1)) - (K * np.exp(-r * (T-t)) * N(d2)))
-    return path
+    N = norm.cdf
+    option_paths = []
+    for ul_path in ul_paths:
+        d1 = (np.log(ul_path / K) + (r + (vol**2) / 2) * T) / (vol * np.sqrt(T))
+        d2 = d1 - (vol * np.sqrt(T))
+        
+        if type == "call":
+            option_paths.append((ul_path * N(d1)) - (K * np.exp(-r * T) * N(d2)))
+        elif type == "put":
+            option_paths.append((K * np.exp(-r * T) * N(d2)) - (ul_path * N(-d1)))
+        else:
+            print("Invalid option type, must be either 'call' or 'put'.")
+            exit()
+        
+    return np.array(option_paths)
+
 
 if __name__ == "__main__":
     S = 100
@@ -64,10 +66,22 @@ if __name__ == "__main__":
     
     paths = Stock_GBM_Jumps(S, mu, sigma, lam, T, dt, M)
     
+    plt.figure(1)
+    plt.plot(paths.T.squeeze())
+    plt.xlabel("$t$")
+    plt.ylabel("Price")
+    plt.title(f"$M$={M} Simulations of GBM with jumps of rate $\lambda$={lam}\n($\mu$={mu}, $\sigma$={sigma})")
+    
     K = 150
     r = 0.02
+    type = "call"
     
-    for path in paths:
-        plt.figure(2)
-        plt.plot(Option_Price_BS("call", path, K, T//dt, r, sigma))
-        plt.show()
+    opt_paths = Option_Price_BS(type, paths, K, T, r, sigma)
+    
+    plt.figure(2)
+    plt.plot(opt_paths.T.squeeze())
+    plt.xlabel("$t$")
+    plt.ylabel("Price")
+    plt.title(f"$M$={M} {type} options of underlying asset paths from Figure 1")
+    
+    plt.show()
